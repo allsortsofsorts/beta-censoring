@@ -10,6 +10,21 @@ using Microsoft.Extensions.Logging;
 
 namespace Microsoft.Extensions.DependencyInjection {
     public static class ServiceExtensions {
+        //TODO this is not organized but lets just get this thing running
+        public static WebApplication StartDiscordLoop(this WebApplication app)
+        {
+            //TODO what to do with this?
+            var logger = app.Services.GetService<ILogger<IStickerProvider>>();
+            var discordOverrides = app.Services.GetService<DiscordOverrides>();
+            var timer = new System.Diagnostics.Stopwatch();
+            timer.Start();
+            logger?.LogDebug($"Starting Discord Loop...");
+            var discordThread = new Thread(() => DiscordWorkThread.DoWork(discordOverrides));
+            discordThread.Start();
+            logger?.LogInformation($"Loaded Discord Loop in {timer.Elapsed.TotalSeconds}s!");
+            return app;
+        }
+
         public static WebApplication UseStickerProvider(this WebApplication app) {
             var logger = app.Services.GetService<ILogger<IStickerProvider>>();
             var timer = new System.Diagnostics.Stopwatch();

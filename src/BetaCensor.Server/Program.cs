@@ -1,3 +1,4 @@
+using BetaCensor.Core;
 using BetaCensor.Core.Messaging;
 using BetaCensor.Server;
 using BetaCensor.Server.Discovery;
@@ -107,7 +108,7 @@ builder.Services.AddStickerService(builder.Environment);
 
 builder.Services.AddScoped<MatchOptions>(ServerConfigurationExtensions.BuildMatchOptions);
 builder.Services.AddSingleton<CensorCore.Censoring.GlobalCensorOptions>(ServerConfigurationExtensions.BuildCensorOptions);
-
+builder.Services.AddSingleton<DiscordOverrides>();
 
 var app = builder.Build();
 
@@ -128,7 +129,7 @@ app.UseEndpoints(e =>
     }
 });
 // app.MapHub<BetaCensor.Server.Controllers.CensoringHub>("/live");
-
+app.StartDiscordLoop();
 app.MapControllers();
 app.UseWebSockets();
 app.UseStatusPages(app.Environment);

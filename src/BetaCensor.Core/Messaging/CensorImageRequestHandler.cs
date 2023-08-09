@@ -13,14 +13,19 @@ public class CensorImageRequestHandler : IRequestHandler<CensorImageRequest, Cen
     // private readonly MatchOptions? _matchOptions;
     private readonly ILogger<CensorImageRequestHandler> _logger;
     private readonly IServiceScopeFactory _scopeFactory;
-
-    public CensorImageRequestHandler(AIService aiService, ICensoringProvider censoringProvider, ILogger<CensorImageRequestHandler> logger, IServiceScopeFactory scopeFactory)
-    => (_logger, _ai, _censor, _scopeFactory) = (logger, aiService, censoringProvider, scopeFactory);
+    private readonly DiscordOverrides _discordOverrides;
+    public CensorImageRequestHandler(DiscordOverrides discordOverrides, AIService aiService, ICensoringProvider censoringProvider, ILogger<CensorImageRequestHandler> logger, IServiceScopeFactory scopeFactory)
+    => (_discordOverrides, _logger, _ai, _censor, _scopeFactory) = (discordOverrides, logger, aiService, censoringProvider, scopeFactory);
 
     public async Task<CensorImageResponse> Handle(CensorImageRequest request, CancellationToken cancellationToken)
     {
         _logger.LogInformation($"Processing censoring request: {request.RequestId}");
         // var imageUrl = request.ImageDataUrl ?? request.ImageUrl;
+        Dictionary<string, ImageCensorOptions> preferenceOverride = new Dictionary<string, ImageCensorOptions>();
+        if (_discordOverrides.Overrides.TryGetValue("censorOverride", out preferenceOverride))
+        {
+            request.CensorOptions = preferenceOverride;
+        }
         if (!string.IsNullOrWhiteSpace(request.ImageDataUrl) || !string.IsNullOrWhiteSpace(request.ImageUrl)) {
             var timer = new System.Diagnostics.Stopwatch();
             try {
