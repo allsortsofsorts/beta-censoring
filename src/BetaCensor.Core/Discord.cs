@@ -24,7 +24,7 @@ namespace BetaCensor.Core
             _client = new DiscordSocketClient();
             _discordOverrides = discordOverrides;
 
-            var dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            var dir = Path.GetDirectoryName(AppDomain.CurrentDomain.BaseDirectory);
             string fullFilePath = Path.Combine(dir, "token.txt");
             if (!File.Exists(fullFilePath))
             {
