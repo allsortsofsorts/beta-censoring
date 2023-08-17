@@ -5,7 +5,7 @@ You should still send an have the user load their .betaoverride as normal, as Yo
 
 # Bot Usage
 
-Discord's policy requires that You be in a common server with anyone You DM, You'll need to join the server of the bot You want to message. Simply DM the bot anything to get it started. Feel free to mute the server after joining, You'll never need to do anything there.
+Simply message in the server You are invited to where the bot is running get it started. Feel free to mute the server after joining.
 
 ## Commands
 

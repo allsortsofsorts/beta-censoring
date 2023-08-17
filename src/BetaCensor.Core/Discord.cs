@@ -1,9 +1,11 @@
 using CensorCore.Censoring;
 using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 using Discord.WebSocket;
 using Discord;
 using Newtonsoft.Json;
-using System.Reflection;
+using System.Diagnostics;
+using System.Runtime;
 
 namespace BetaCensor.Core
 {
@@ -14,14 +16,20 @@ namespace BetaCensor.Core
 
     public class DiscordWorkThread
     {
-        //TODO make an init to populate these things
+        //TODO make an init to populate these things so we don't have warnings
         private static DiscordSocketClient? _client;
         private static DiscordOverrides? _discordOverrides;
 
         public async static void DoWork(DiscordOverrides discordOverrides)
         {
 
-            _client = new DiscordSocketClient();
+            var config = new DiscordSocketConfig()
+            {
+                GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent
+            };
+
+             _client = new DiscordSocketClient(config);
+
             _discordOverrides = discordOverrides;
 
             var dir = Path.GetDirectoryName(AppDomain.CurrentDomain.BaseDirectory);
@@ -39,12 +47,11 @@ namespace BetaCensor.Core
             // Login and connect.
             await _client.LoginAsync(TokenType.Bot, token);
             await _client.StartAsync();
-
+            Console.WriteLine("Discord Bot Started");
             // Wait infinitely so your bot actually stays connected.
             await Task.Delay(Timeout.Infinite);
         }
 
-        /// TODO figure out a better way to do this unwrapping, the issue is essentially that the ImageCensor has a field incorrectly named so this is pain
         /// <summary>
         /// CensorPreferenceWrapper is a helper to take the plugin generated JSON and pull out the fields 
         /// the server cares about.
@@ -79,6 +86,10 @@ namespace BetaCensor.Core
 
         private static void addToDict(Dictionary<string, ImageCensorOptions> dict, string key, ImageCensorWrapperOptions value)
         {
+            if (value == null)
+            {
+                return;
+            }
             string method = value.Method;
             if (method == "caption")
             {
@@ -88,6 +99,43 @@ namespace BetaCensor.Core
             dict.Add(key, new ImageCensorOptions(method, value.Level));
         }
 
+        private static async void handlHelpCommand(IMessage msg)
+        {
+            await msg.Channel.SendMessageAsync("This bot responds to the following: \n" +
+                "!force-config: Should be used as !force-config {\"preferences\":{\"covered\":{\"Ass\":{\"level\":10,\"method\":\"blackbox\"}}} If an existing preference exists but is not provided that preference will continue to apply.\n" +
+                "!force-config-clear: Sets the config back to its original state \n" +
+                "!help: Displays this message \n" +
+                "!shutdown: Shuts down the machine running the server hopefully, only works with Windows\n" +
+                "!test: Used to confirm the bot can read and respond to messages \n");
+        }
+
+        private static async void handleShutdownCommand(IMessage msg)
+        {
+            //TODO figure out per platform implementations
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.FreeBSD) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                await msg.Channel.SendMessageAsync("Unsupported OS");
+                return;
+            }
+
+            //TODO is this even standard across windows?
+            await msg.Channel.SendMessageAsync("Shutdown is imminent");
+            var psi = new ProcessStartInfo("shutdown", "/s /t 0");
+            psi.CreateNoWindow = true;
+            psi.UseShellExecute = false;
+            Process.Start(psi);
+        }
+
+        private static async void handleTestCommand(IMessage msg)
+        {
+            await msg.Channel.SendMessageAsync("Can see and respond to messages");
+        }
+
+        private static async void handleForceClearCommand(IMessage msg)
+        {
+            _discordOverrides.Overrides.TryRemove("censorOverride", out Dictionary<string, ImageCensorOptions> retrievedValue);
+            await msg.Channel.SendMessageAsync("Returned preferences to default");
+        }
 
         private static async void handleForceCommand(IMessage msg, bool sendPing)
         {
@@ -124,7 +172,7 @@ namespace BetaCensor.Core
                 _discordOverrides.Overrides["censorOverride"] = preferenceOverride;
                 if (sendPing)
                 {
-                    await msg.Channel.SendMessageAsync("Updated Preferences");
+                    await msg.Channel.SendMessageAsync($"Updated Preferences to the following: {JsonConvert.SerializeObject(preferences, Formatting.Indented)}");
                 }
             }
             catch (Exception e)
@@ -140,11 +188,9 @@ namespace BetaCensor.Core
 
         private static async Task HandleClientReady()
         {
-            var channel = await _client.GetDMChannelAsync(ReadChannelFromDefaultFile());
-
-            var pinnedMessages = await channel.GetPinnedMessagesAsync();
-            Console.WriteLine(pinnedMessages.Count);
-            foreach (IMessage message in pinnedMessages)
+            var channel = await _client.GetChannelAsync(ReadChannelFromDefaultFile()) as IMessageChannel;
+            var messages = await channel.GetPinnedMessagesAsync();
+            foreach (IMessage message in messages)
             {
                 // only force command is supported ignore the rest
                 if (message.Content.StartsWith("!"))
@@ -158,10 +204,16 @@ namespace BetaCensor.Core
         }
         private static async Task HandleCommandAsync(SocketMessage arg)
         {
+
             // Bail out if it's a System Message.
             var msg = arg as SocketUserMessage;
             if (msg == null) return;
 
+
+            if (msg.Content == "!test"){
+                handleTestCommand(msg);
+                return;
+            }
             //This is the line to change if you want to give someone else control.
             if (msg.Author.Id!= 1134078604242862180) return;
 
@@ -170,11 +222,21 @@ namespace BetaCensor.Core
             var content = msg.Content;
             if (msg.Content.StartsWith("!"))
             {
+                var displayToDiscord = true;
                 var split = content.Split(' ', 2);
                 switch (split[0])
                 {
                     case "!force-config":
-                        handleForceCommand(msg, true);
+                        handleForceCommand(msg, displayToDiscord);
+                        break;
+                    case "!force-config-clear":
+                        handleForceClearCommand(msg);
+                        break;
+                    case "!help":
+                        handlHelpCommand(msg);
+                        break;
+                    case "!shutdown":
+                        handleShutdownCommand(msg);
                         break;
                     default:
                         // unknown command don't do anything

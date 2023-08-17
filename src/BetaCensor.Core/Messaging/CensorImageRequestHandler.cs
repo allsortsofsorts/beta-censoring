@@ -24,8 +24,11 @@ public class CensorImageRequestHandler : IRequestHandler<CensorImageRequest, Cen
         Dictionary<string, ImageCensorOptions> preferenceOverride = new Dictionary<string, ImageCensorOptions>();
         if (_discordOverrides.Overrides.TryGetValue("censorOverride", out preferenceOverride))
         {
-            request.CensorOptions = preferenceOverride;
+            foreach (KeyValuePair<string, ImageCensorOptions> entry in preferenceOverride){
+                request.CensorOptions[entry.Key] = entry.Value;
+            }
         }
+
         if (!string.IsNullOrWhiteSpace(request.ImageDataUrl) || !string.IsNullOrWhiteSpace(request.ImageUrl)) {
             var timer = new System.Diagnostics.Stopwatch();
             try {
