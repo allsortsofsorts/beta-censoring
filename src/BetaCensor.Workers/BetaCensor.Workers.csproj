@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="../BetaCensor.shared.props" />
   <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net6.0-windows</TargetFramework>
     <UserSecretsId>dotnet-BetaCensor.Workers-3224370D-199D-4986-912C-9BA199E10068</UserSecretsId>
     <IsPackable>true</IsPackable>
     <IsPublishable>false</IsPublishable>

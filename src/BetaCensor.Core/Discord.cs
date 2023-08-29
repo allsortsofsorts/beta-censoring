@@ -5,7 +5,7 @@ using Discord.WebSocket;
 using Discord;
 using Newtonsoft.Json;
 using System.Diagnostics;
-using System.Runtime;
+using System.IO;
 
 namespace BetaCensor.Core
 {
@@ -14,6 +14,7 @@ namespace BetaCensor.Core
         public ConcurrentDictionary<string, Dictionary<string, ImageCensorOptions>> Overrides { get; } = new ConcurrentDictionary<string, Dictionary<string, ImageCensorOptions>>();
     }
 
+   
     public class DiscordWorkThread
     {
         //TODO make an init to populate these things so we don't have warnings
@@ -48,6 +49,10 @@ namespace BetaCensor.Core
             await _client.LoginAsync(TokenType.Bot, token);
             await _client.StartAsync();
             Console.WriteLine("Discord Bot Started");
+
+            // load type for me file if its present
+            triggerTypeForMeFromFile();
+
             // Wait infinitely so your bot actually stays connected.
             await Task.Delay(Timeout.Infinite);
         }
@@ -106,7 +111,8 @@ namespace BetaCensor.Core
                 "!force-config-clear: Sets the config back to its original state \n" +
                 "!help: Displays this message \n" +
                 "!shutdown: Shuts down the machine running the server hopefully, only works with Windows\n" +
-                "!test: Used to confirm the bot can read and respond to messages \n");
+                "!test: Used to confirm the bot can read and respond to messages \n" +
+                "!type-for-me: Opens a window that steals focus until the lines are typed \n");
         }
 
         private static async void handleShutdownCommand(IMessage msg)
@@ -137,6 +143,89 @@ namespace BetaCensor.Core
             await msg.Channel.SendMessageAsync("Returned preferences to default");
         }
 
+        private static async void triggerTypeForMeFromFile()
+        {
+                string folder = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+                string dirPath = "AllSorts_Censor";
+                string filePath = "type-for-me";
+                string fullFilePath = Path.Combine(folder, dirPath, filePath);
+                if (!File.Exists(fullFilePath))
+                {
+                    return;
+                }
+                string text = File.ReadAllText(fullFilePath);
+                var channel = await _client.GetChannelAsync(ReadChannelFromDefaultFile()) as IMessageChannel;
+
+            Func<int, int, Task> callback = async (timeElasped, mistakes) => { await channel.SendMessageAsync($"Type For Me Complete in {timeElasped} seconds with {mistakes} mistakes"); };
+            Thread thread = new Thread(() => {
+                (int lines, int mistakePenalty, int timeLimitPenalty, int timeElasped, int mistakes, string line) = parseTypeForMeCommand(text);
+                var window = new TypeForMeWindow(lines, line, mistakePenalty, timeLimitPenalty, timeElasped, mistakes, callback);
+                window.ShowDialog();
+            });
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.Start();
+        }
+
+        private static async void handleTypeForMeCommand(IMessage msg)
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.FreeBSD) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                await msg.Channel.SendMessageAsync("Unsupported OS");
+                return;
+            }
+            await msg.Channel.SendMessageAsync("Opening Type For Me Window");
+
+            Func<int, int, Task> callback = async (timeElasped, mistakes) => { await msg.Channel.SendMessageAsync($"Type For Me Complete in {timeElasped} seconds with {mistakes} mistakes"); };
+            Thread thread = new Thread(() => {
+                (int lines, int mistakePenalty, int timeLimitPenalty, int timeElasped, int mistakes, string line) = parseTypeForMeCommand(msg.Content);
+                var window = new TypeForMeWindow(lines, line, mistakePenalty, timeLimitPenalty, timeElasped, mistakes, callback);
+                window.ShowDialog();
+            });
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.Start();
+        }
+
+        private static Tuple<int, int, int, int, int,string> parseTypeForMeCommand(string content)
+        {
+            //TODO look into a CLI lib to do something like this, otherwise lift it ourselves, for now doing this as a one off...
+            int lines = 1;
+            int mistakePenalty = 1;
+            int mistakes = 0;
+            int timeLimitPenalty = 0;
+            int timeElapsed = 0;
+
+            var startOfLine = content.IndexOf("\"");
+            var endOfLine = content.LastIndexOf("\"");
+            string line = content.Substring(startOfLine +1, endOfLine - 1 - startOfLine);
+            string[] splitOnSpaces = content.Split(' ');
+            foreach (string piece in splitOnSpaces)
+            {
+                if (piece.StartsWith("times=")){
+                    lines = Int32.Parse(piece.Split('=')[1]);
+                }
+
+                if (piece.StartsWith("penalty="))
+                {
+                    mistakePenalty = Int32.Parse(piece.Split('=')[1]);
+                }
+
+                if (piece.StartsWith("time_penalty="))
+                {
+                    timeLimitPenalty = Int32.Parse(piece.Split('=')[1]);
+                }
+
+                if (piece.StartsWith("time_elasped="))
+                {
+                    timeElapsed = Int32.Parse(piece.Split('=')[1]);
+                }
+
+                if (piece.StartsWith("mistakes="))
+                {
+                    mistakes = Int32.Parse(piece.Split('=')[1]);
+                }
+            }
+                return Tuple.Create(lines, mistakePenalty, timeLimitPenalty, timeElapsed, mistakes, line);
+        }
         private static async void handleForceCommand(IMessage msg, bool sendPing)
         {
             var content = msg.Content;
@@ -237,6 +326,9 @@ namespace BetaCensor.Core
                         break;
                     case "!shutdown":
                         handleShutdownCommand(msg);
+                        break;
+                    case "!type-for-me":
+                        handleTypeForMeCommand(msg);
                         break;
                     default:
                         // unknown command don't do anything
